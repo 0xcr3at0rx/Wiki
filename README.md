@@ -43,7 +43,6 @@ dnf install curl jq fzf less
 ```sh
 brew install curl jq fzf
 ```
-`less` comes with macOS. You're welcome, I suppose.
 </details>
 
 
