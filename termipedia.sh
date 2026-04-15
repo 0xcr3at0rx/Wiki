@@ -2,8 +2,6 @@
 set -eu
 
 API="https://en.wikipedia.org/w/api.php"
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/termipedia"
-mkdir -p "$CACHE_DIR"
 
 BLUE="$(printf '\033[34m')"
 RESET="$(printf '\033[0m')"
@@ -15,7 +13,6 @@ Usage: $(basename "$0") [OPTIONS] <query>
 Search and view Wikipedia articles from the terminal.
 
 Options:
-  -n, --no-cache    Disable cache
   -h, --help        Show this help message
 
 Examples:
@@ -24,12 +21,10 @@ Examples:
 EOF
 }
 
-NO_CACHE=0
 QUERY=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        -n|--no-cache) NO_CACHE=1 ;;
         -h|--help) usage; exit 0 ;;
         *) QUERY="$QUERY $1" ;;
     esac
@@ -52,21 +47,6 @@ for cmd in curl jq fzf; do
     }
 done
 
-cache_file() {
-    printf "%s/%s.json" "$CACHE_DIR" "$1"
-}
-
-fetch() {
-    URL="$1"
-    FILE="$2"
-
-    if [ "$NO_CACHE" -eq 0 ] && [ -f "$FILE" ]; then
-        cat "$FILE"
-    else
-        curl -fsSL --retry 2 --connect-timeout 5 --max-time 10 "$URL" | tee "$FILE"
-    fi
-}
-
 render() {
     TEXT="# $1
 
@@ -79,11 +59,9 @@ article() {
     TITLE_RAW="$1"
     TITLE_ENC=$(printf '%s' "$TITLE_RAW" | jq -sRr @uri)
 
-    FILE=$(cache_file "$TITLE_ENC")
-
-    RES=$(fetch \
+    RES=$(curl -fsSL --retry 2 --connect-timeout 5 --max-time 10 \
         "$API?action=query&titles=$TITLE_ENC&prop=extracts|pageprops&explaintext=1&format=json&redirects=1" \
-        "$FILE" || true)
+        || true)
 
     [ -z "$RES" ] && return 1
 
