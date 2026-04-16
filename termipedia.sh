@@ -1,51 +1,115 @@
 #!/bin/sh
+set -eu
 
-if [ -z "${1:-}" ]; then
-    echo "Usage: termipedia <query>" >&2
+API="https://en.wikipedia.org/w/api.php"
+
+BLUE="$(printf '\033[34m')"
+RESET="$(printf '\033[0m')"
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [OPTIONS] <query>
+
+Search and view Wikipedia articles from the terminal.
+
+Options:
+  -h, --help        Show this help message
+
+Examples:
+  $(basename "$0") linux
+  $(basename "$0") "quantum mechanics"
+EOF
+}
+
+QUERY=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        *) QUERY="$QUERY $1" ;;
+    esac
+    shift
+done
+
+# Trim leading space
+QUERY=$(printf "%s" "$QUERY" | sed 's/^ *//')
+
+# Show help if no query provided
+if [ -z "$QUERY" ]; then
+    usage
     exit 1
 fi
 
-fetch_article() {
-    ENCODED=$(printf '%s' "$1" | sed 's/ /_/g')
+for cmd in curl jq fzf; do
+    command -v "$cmd" >/dev/null 2>&1 || {
+        echo "Error: '$cmd' is required but not installed." >&2
+        exit 1
+    }
+done
 
-    RESPONSE=$(curl -s \
-        "https://en.wikipedia.org/w/api.php?action=query&titles=${ENCODED}&prop=extracts%7Cpageprops&explaintext=true&format=json&redirects=1")
+render() {
+    TEXT="# $1
 
-    IS_DISAMBIG=$(printf '%s' "$RESPONSE" \
-        | jq -r '.query.pages | to_entries[0].value | .pageprops | has("disambiguation") | tostring')
+$2"
 
-    if [ "$IS_DISAMBIG" = "true" ]; then
-        echo "Disambiguation page. Pick one:" >&2
-
-        SELECTION=$(curl -s \
-            "https://en.wikipedia.org/w/api.php?action=query&titles=${ENCODED}&prop=links&pllimit=max&format=json&redirects=1" \
-            | jq -r '.query.pages | to_entries[0].value | .links[].title' \
-            | grep -v ":" \
-            | fzf --prompt="Disambiguate > ")
-
-        if [ -z "$SELECTION" ]; then
-            echo "Nothing selected. Fine. Suit yourself." >&2
-            exit 0
-        fi
-
-        fetch_article "$SELECTION"
-    else
-        printf '%s' "$RESPONSE" \
-            | jq -r '.query.pages | to_entries[0].value | "# " + .title + "\n\n" + .extract' \
-            | less
-    fi
+    printf "%s\n" "$TEXT" | less
 }
 
-QUERY=$(printf '%s' "$1" | sed 's/ /_/g')
+article() {
+    TITLE_RAW="$1"
+    TITLE_ENC=$(printf '%s' "$TITLE_RAW" | jq -sRr @uri)
 
-SELECTION=$(curl -s \
-    "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${QUERY}&format=json&srlimit=20" \
-    | jq -r '.query.search[].title' \
-    | fzf --prompt="Wikipedia > ")
+    RES=$(curl -fsSL --retry 2 --connect-timeout 5 --max-time 10 \
+        "$API?action=query&titles=$TITLE_ENC&prop=extracts|pageprops&explaintext=1&format=json&redirects=1" \
+        || true)
 
-if [ -z "$SELECTION" ]; then
-    echo "Nothing selected. Typical." >&2
-    exit 0
-fi
+    [ -z "$RES" ] && return 1
 
-fetch_article "$SELECTION"
+    TITLE=$(printf '%s' "$RES" | jq -r '.query.pages | to_entries[0].value.title // empty')
+    BODY=$(printf '%s' "$RES" | jq -r '.query.pages | to_entries[0].value.extract // empty')
+    DISAMBIG=$(printf '%s' "$RES" | jq -r '.query.pages | to_entries[0].value.pageprops.disambiguation? // empty')
+
+    [ -z "$TITLE" ] && return 1
+
+    # DISAMBIGUATION HANDLING
+    if [ -n "$DISAMBIG" ]; then
+        SEL=$(curl -fsSL --retry 2 \
+            "$API?action=query&titles=$TITLE_ENC&prop=links&pllimit=max&format=json" \
+        | jq -r '.query.pages | to_entries[0].value.links[].title' \
+        | grep -v ":" \
+        | fzf \
+            --prompt="${BLUE}Select > ${RESET}" \
+            --preview "
+t=\$(printf '%s' {} | jq -sRr @uri)
+curl -fsSL '$API?action=query&titles='\$t'&prop=extracts&explaintext=1&format=json' 2>/dev/null \
+| jq -r '.query.pages | to_entries[0].value.extract // \"\"' | head -n 20
+")
+
+        [ -z "$SEL" ] && return 0
+        article "$SEL"
+        return
+    fi
+
+    render "$TITLE" "$BODY"
+}
+
+# SEARCH + SELECT
+SEL=$(curl -fsSL --retry 2 \
+    "$API" \
+    --data-urlencode "action=query" \
+    --data-urlencode "list=search" \
+    --data-urlencode "srsearch=$QUERY" \
+    --data-urlencode "format=json" \
+    --data-urlencode "srlimit=20" \
+| jq -r '.query.search[].title' \
+| fzf \
+    --prompt="${BLUE}Wiki > ${RESET}" \
+    --preview "
+t=\$(printf '%s' {} | jq -sRr @uri)
+curl -fsSL '$API?action=query&titles='\$t'&prop=extracts&explaintext=1&format=json' 2>/dev/null \
+| jq -r '.query.pages | to_entries[0].value.extract // \"\"' | head -n 20
+")
+
+[ -z "$SEL" ] && exit 0
+
+article "$SEL"
