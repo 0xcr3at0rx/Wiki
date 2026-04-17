@@ -69,11 +69,12 @@ render() {
     ) | less -R
 }
 
-check_deps
 
 if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    usage
+    usage;  exit 0
 fi
+
+check_deps
 
 QUERY="$*"
 
@@ -93,7 +94,6 @@ SELECTED=$(echo "$TITLES" | fzf --prompt="${BL}${B}Wiki ❯ ${R}" \
             _T_ENC=\$(printf {} | jq -sRr @uri);
             _URL=\"$API?action=query&titles=\$_T_ENC&prop=extracts&explaintext=1&format=json&redirects=1\";
             
-            # Header removed, showing only All-Caps Label
             printf \"${Y}${B}SUMMARY${R}\n${D}──────────────────────────────────────────${R}\n\n\";
             
             curl -sL --connect-timeout 2 \"\$_URL\" | \
