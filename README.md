@@ -57,9 +57,9 @@ brew install curl jq fzf
 ## Installation
 
 ```sh
-git clone https://github.com/kantiankant/Termipedia
-cd Termipedia
-doas/sudo cp termipedia.sh /usr/local/bin/termipedia
+git clone https://github.com/0xcr3at0rx/Wiki
+cd Wiki
+doas/sudo cp wiki /usr/local/bin/wiki
 ```
 
 <details>
@@ -73,7 +73,7 @@ Run without installing:
 nix run github:0xcr3at0rx/Wiki -- <search query>
 # or
 nix shell github:0xcr3at0rx/Wiki
-termipedia <search query>
+wiki <search query>
 ```
 
 Install:
@@ -84,9 +84,9 @@ nix profile add github:0xcr3at0rx/Wiki
 Or add to your NixOS/Home-Manager configuration:
 
 ```nix
-inputs.termipedia.url = "github:0xcr3at0rx/Wiki";
+inputs.wiki.url = "github:0xcr3at0rx/Wiki";
 # then include this in your packages
-inputs.termipedia.packages.${system}.termipedia
+inputs.wiki.packages.${system}.wiki
 ```
 </details>
 
@@ -94,7 +94,7 @@ inputs.termipedia.packages.${system}.termipedia
 ## Usage
 
 ```sh
-termipedia <search query>
+wiki <search query>
 ```
 ## License
 
