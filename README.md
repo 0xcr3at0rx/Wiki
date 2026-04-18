@@ -1,7 +1,7 @@
-## Termipedia
+## Wiki
 
 
-Termipedia is a POSIX shell script for searching Wikipedia without the hassle of opening a web browser because it lives in your terminal. It has fuzzy searching, disambiguation page handling, and is lightweight all out of the box
+Wiki is a POSIX shell script for searching Wikipedia without the hassle of opening a web browser because it lives in your terminal. It has fuzzy searching, disambiguation page handling, and is lightweight all out of the box
 
 ## Dependencies
 
@@ -70,21 +70,21 @@ Using Nix
 Run without installing:
 
 ```sh
-nix run github:kantiankant/Termipedia -- <search query>
+nix run github:0xcr3at0rx/Wiki -- <search query>
 # or
-nix shell github:kantiankant/Termipedia
+nix shell github:0xcr3at0rx/Wiki
 termipedia <search query>
 ```
 
 Install:
 ```sh
-nix profile add github:kantiankant/Termipedia
+nix profile add github:0xcr3at0rx/Wiki
 ```
 
 Or add to your NixOS/Home-Manager configuration:
 
 ```nix
-inputs.termipedia.url = "github:kantiankant/Termipedia";
+inputs.termipedia.url = "github:0xcr3at0rx/Wiki";
 # then include this in your packages
 inputs.termipedia.packages.${system}.termipedia
 ```
