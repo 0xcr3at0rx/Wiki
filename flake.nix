@@ -14,23 +14,25 @@
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin" ];
 
       perSystem =
-        { self', pkgs, ... }:
+        { self', pkgs, lib, ... }:
         let
-          name = "wiki";
-        in
-        {
-          packages."${name}" = pkgs.writeShellApplication {
-            # package name
+          # Get all files in the scripts directory
+          scriptFiles = builtins.attrNames (builtins.readDir ./scripts);
+          
+          # Helper to create a package from a script name
+          mkScriptPkg = name: pkgs.writeShellApplication {
             inherit name;
-
-            # dependencies
-            runtimeInputs = with pkgs; [ curl jq fzf less ];
-
-            # script
-            text = builtins.readFile ./wiki;
+            runtimeInputs = with pkgs; [ curl jq fzf less yt-dlp mpv chafa wl-clipboard w3m lynx ];
+            text = builtins.readFile (./scripts + "/${name}");
           };
 
-          packages.default = self'.packages."${name}";
+          # Create an attribute set of packages: { scriptName = package; ... }
+          scriptPkgs = lib.genAttrs scriptFiles mkScriptPkg;
+        in
+        {
+          packages = scriptPkgs // {
+            default = if builtins.hasAttr "wiki" scriptPkgs then scriptPkgs.wiki else (lib.head (builtins.attrValues scriptPkgs));
+          };
         };
     };
 }

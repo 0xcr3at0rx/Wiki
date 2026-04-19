@@ -1,0 +1,104 @@
+#!/usr/bin/env sh
+
+# YouTube Search & Play Script
+# Optimized for high-fidelity top-aligned image previews.
+
+# Check dependencies
+for cmd in yt-dlp fzf mpv curl; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Error: Required dependency '$cmd' is missing."
+        exit 1
+    fi
+done
+
+if [ -z "$1" ]; then
+    echo "Usage: yt <search query>"
+    exit 0
+fi
+
+QUERY="$*"
+export CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/yt-cli"
+mkdir -p "$CACHE_DIR"
+
+# Fetch search results quietly
+TAB=$(printf '\t')
+RESULTS=$(yt-dlp "ytsearch15:$QUERY" \
+    --flat-playlist \
+    --print "%(title)s${TAB}%(id)s${TAB}%(uploader)s${TAB}%(duration_string)s${TAB}%(thumbnails.-1.url)s" \
+    --no-playlist \
+    --quiet \
+    --ignore-errors \
+    --no-warnings)
+
+if [ -z "$RESULTS" ]; then
+    echo "No results found for '$QUERY'."
+    exit 1
+fi
+
+# Select video using fzf
+SELECTED=$(echo "$RESULTS" | fzf \
+    --ansi \
+    --prompt="YouTube ❯ " \
+    --header "ENTER: Play | CTRL-Y: Copy URL | CTRL-O: Browser | ESC: Quit" \
+    --delimiter='\t' \
+    --with-nth='1,3,4' \
+    --expect="ctrl-y,ctrl-o" \
+    --preview-window="top:80%:wrap" \
+    --preview "
+        # Extract fields
+        TITLE=\$(echo {} | cut -f1 -d'${TAB}')
+        ID=\$(echo {} | cut -f2 -d'${TAB}')
+        UPLOADER=\$(echo {} | cut -f3 -d'${TAB}')
+        DURATION=\$(echo {} | cut -f4 -d'	')
+        THUMB_URL=\$(echo {} | cut -f5 -d'	')
+        
+        # Colors
+        B='\033[1m'; BL='\033[34m'; R='\033[0m'
+        
+        # 1. High-Fidelity Image Preview (AT TOP)
+        if [ -n \"\$THUMB_URL\" ] && [ \"\$THUMB_URL\" != \"NA\" ]; then
+            FILE=\"$CACHE_DIR/\$ID.jpg\"
+            [ ! -f \"\$FILE\" ] && curl -sL \"\$THUMB_URL\" -o \"\$FILE\" --connect-timeout 2 >/dev/null 2>&1
+            
+            if [ -f \"\$FILE\" ]; then
+                if command -v chafa >/dev/null 2>&1; then
+                    chafa --symbols block+border --size 60x18 \"\$FILE\"
+                elif command -v catimg >/dev/null 2>&1; then
+                    catimg -w 60 \"\$FILE\"
+                fi
+            fi
+        fi
+
+        # 2. Metadata (BELOW IMAGE)
+        echo
+        printf \"\${B}%s\${R}\n\" \"\$TITLE\"
+        printf \"\${BL}Channel:  \${R}%s\n\" \"\$UPLOADER\"
+        printf \"\${BL}Duration: \${R}%s\n\" \"\$DURATION\"
+    ")
+
+# Process selection
+KEY=$(echo "$SELECTED" | head -n1)
+LINE=$(echo "$SELECTED" | tail -n1)
+
+if [ -n "$LINE" ]; then
+    VIDEO_ID=$(echo "$LINE" | cut -f2 -d"${TAB}")
+    VIDEO_URL="https://www.youtube.com/watch?v=$VIDEO_ID"
+    
+    ctrl-y)
+        # Copy URL to clipboard
+        if command -v wl-copy >/dev/null 2>&1; then echo -n "$VIDEO_URL" | wl-copy
+        elif command -v xclip >/dev/null 2>&1; then echo -n "$VIDEO_URL" | xclip -selection clipboard
+        elif command -v pbcopy >/dev/null 2>&1; then echo -n "$VIDEO_URL" | pbcopy
+        fi
+        echo "Copied: $VIDEO_URL"
+        ;;
+
+        ctrl-o)
+            command -v xdg-open >/dev/null 2>&1 && xdg-open "$VIDEO_URL"
+            command -v open >/dev/null 2>&1 && open "$VIDEO_URL"
+            ;;
+        *)
+            mpv --quiet --no-terminal --msg-level=all=no "$VIDEO_URL"
+            ;;
+    esac
+fi

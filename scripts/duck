@@ -1,0 +1,142 @@
+#!/usr/bin/env sh
+
+# duck: A DuckDuckGo search script for the terminal.
+# Uses w3m/lynx for a full terminal browsing experience.
+
+# Check dependencies
+for cmd in curl fzf; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Error: Required dependency '$cmd' is missing."
+        exit 1
+    fi
+done
+
+if [ -z "$1" ]; then
+    echo "Usage: duck <search query>"
+    exit 0
+fi
+
+QUERY="$*"
+# Use Lynx User-Agent as it's more reliable for the DDG HTML endpoint
+UA="Lynx/2.8.9rel.1 libwww-FM/2.14 SSL-MM/1.4.1 OpenSSL/1.1.1"
+URL="https://html.duckduckgo.com/html/?q=$(printf '%s' "$QUERY" | jq -sRr @uri)"
+
+# Fetch results
+RESULTS_HTML=$(curl -fsSL -A "$UA" "$URL")
+
+if [ -z "$RESULTS_HTML" ] || echo "$RESULTS_HTML" | grep -q "No results found"; then
+    echo "No results found for '$QUERY'."
+    exit 1
+fi
+
+# Multi-line robust parsing
+TAB=$(printf '\t')
+PARSED=$(echo "$RESULTS_HTML" | tr '\n' ' ' | sed 's/<div class="result /\n<div class="result /g' | sed -n '
+    /class="result__a"/ {
+        # Extract title and raw proxy URL
+        s/.*class="result__a" href="\([^"]*\)">\([^<]*\).*/\2\t\1/
+        # Extract snippet
+        t snip
+        :snip
+        h
+        s/.*class="result__snippet"[^>]*>\(.*\)/\1/
+        t strip
+        s/.*/No snippet available/
+        b fin
+        :strip
+        s/<\/a>.*//
+        s/<[^>]*>//g
+        :fin
+        G
+        s/\(.*\)\n\(.*\t.*\)/\2\t\1/p
+    }
+' | head -n 25)
+
+if [ -z "$PARSED" ]; then
+    echo "Failed to parse results. DDG layout might have changed."
+    exit 1
+fi
+
+# Function to unescape HTML entities and decode proxy URLs
+unescape() {
+    val="$1"
+    # Decode DDG proxy URL (uddg=...)
+    if echo "$val" | grep -q "//duckduckgo.com/l/?uddg="; then
+        val=$(echo "$val" | sed 's|.*uddg=\([^&]*\).*|\1|')
+    fi
+    # Decode URL entities
+    val=$(echo "$val" | sed 's/%\([0-9A-F][0-9A-F]\)/\\x\1/g' | xargs -0 printf "%b" 2>/dev/null || echo "$val")
+    # Strip HTML entities
+    echo "$val" | sed "s/&amp;/\&/g; s/&quot;/\"/g; s/&#x27;/'/g; s/&lt;/</g; s/&gt;/>/g; s/<b>//g; s/<\/b>//g"
+}
+
+# Process results for fzf
+echo "$PARSED" | while IFS="$TAB" read -r title url snippet; do
+    [ -z "$title" ] && continue
+    clean_title=$(unescape "$title")
+    clean_url=$(unescape "$url")
+    clean_snippet=$(unescape "$snippet")
+    printf "%s\t%s\t%s\n" "$clean_title" "$clean_url" "$clean_snippet"
+done | fzf \
+    --ansi --prompt=" Duck Search ❯ " \
+    --header " [ENTER] Open in Browser | [CTRL-O] GUI Browser | [CTRL-Y] Copy URL | [ESC] Quit" \
+    --delimiter='\t' --with-nth='1' \
+    --expect="ctrl-y,ctrl-o" \
+    --color="prompt:4,header:2,pointer:4,hl:4" \
+    --preview-window="top:50%:wrap" \
+    --preview "
+        T=\$(echo {} | cut -f1 -d'${TAB}')
+        U=\$(echo {} | cut -f2 -d'${TAB}')
+        U_SHORT=\$(echo \"\$U\" | sed 's#https\?://##; s#www\.##; s#/.*##')
+        S=\$(echo {} | cut -f3 -d'${TAB}')
+        printf \"\033[1;34m%s\033[0m\n\n\033[32m%s\033[0m\n\n%s\n\" \"\$T\" \"\$U_SHORT\" \"\$S\"
+    " | (
+    read -r KEY
+    read -r LINE
+    [ -z "$LINE" ] && exit 0
+    URL_SEL=$(echo "$LINE" | cut -f2 -d"${TAB}")
+    
+    case "$KEY" in
+        ctrl-y)
+            if command -v wl-copy >/dev/null 2>&1; then echo -n "$URL_SEL" | wl-copy
+            elif command -v xclip >/dev/null 2>&1; then echo -n "$URL_SEL" | xclip -selection clipboard
+            elif command -v pbcopy >/dev/null 2>&1; then echo -n "$URL_SEL" | pbcopy
+            fi
+            echo "Copied: $URL_SEL"
+            ;;
+        ctrl-o)
+            command -v xdg-open >/dev/null 2>&1 && xdg-open "$URL_SEL"
+            command -v open >/dev/null 2>&1 && open "$URL_SEL"
+            ;;
+        *)
+            # Open with best available terminal browser
+            if command -v w3m >/dev/null 2>&1; then
+                w3m "$URL_SEL"
+            elif command -v lynx >/dev/null 2>&1; then
+                lynx "$URL_SEL"
+            elif command -v links >/dev/null 2>&1; then
+                links "$URL_SEL"
+            else
+                # Fallback to enhanced extraction
+                echo "No terminal browser found (w3m/lynx). Falling back to text mode..."
+                curl -fsSL -L -A "$UA" "$URL_SEL" | awk '
+                    BEGIN { RS = "<"; width = 80; skip = 0; }
+                    /^script|^style|^head|^nav|^footer|^header|^aside|^form/ { skip++; next }
+                    /^\/script|^\/style|^\/head|^\/nav|^\/footer|^\/header|^\/aside|^\/form/ { skip--; next }
+                    skip > 0 { next }
+                    {
+                        sub(/^[^>]*>/, "", $0);
+                        gsub(/&nbsp;/, " ", $0); gsub(/&amp;/, "\046", $0);
+                        gsub(/&lt;/, "<", $0); gsub(/&gt;/, ">", $0);
+                        gsub(/&#x27;/, "\047", $0); gsub(/&quot;/, "\042", $0);
+                        gsub(/[[:space:]]+/, " ", $0); gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0);
+                        if (length($0) > 2) {
+                            s = $0; while (length(s) > width) { print substr(s, 1, width); s = substr(s, width+1); }
+                            print s; print "";
+                        }
+                    }
+                ' | less -R
+            fi
+            ;;
+    esac
+)

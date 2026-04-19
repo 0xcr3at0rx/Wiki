@@ -1,15 +1,27 @@
-## Wiki
+# Collection of Scripts
 
-
-Wiki is a POSIX shell script for searching Wikipedia without the hassle of opening a web browser because it lives in your terminal. It has fuzzy searching, disambiguation page handling, and is lightweight all out of the box
+A curated collection of lightweight, terminal-based shell scripts to enhance your command-line experience. Designed to be fast, minimal, and easy to use straight out of the box.
 
 ## Dependencies
 
+The scripts in this collection primarily rely on standard POSIX tools, along with a few common utilities:
+
+- `curl`
+- `jq`
+- `fzf`
+- `less`
+- `yt-dlp`
+- `mpv`
+- `chafa` (optional, for thumbnails)
+- `xclip`, `wl-copy`, or `pbcopy` (optional, for clipboard support)
+
+### Installing Dependencies
+
 <details>
-<summary>Alpine</summary>
+<summary>Alpine Linux</summary>
 
 ```sh
-apk add curl jq fzf less
+apk add curl jq fzf less yt-dlp mpv chafa
 ```
 </details>
 
@@ -17,23 +29,23 @@ apk add curl jq fzf less
 <summary>Void Linux</summary>
 
 ```sh
-xbps-install -S curl jq fzf less
+xbps-install -S curl jq fzf less yt-dlp mpv chafa
 ```
 </details>
 
 <details>
-<summary>Arch</summary>
+<summary>Arch Linux</summary>
 
 ```sh
-pacman -S curl jq fzf less
+pacman -S curl jq fzf less yt-dlp mpv chafa
 ```
 </details>
 
 <details>
-<summary>Debian/Ubuntu</summary>
+<summary>Debian / Ubuntu</summary>
 
 ```sh
-apt install curl jq fzf less
+apt install curl jq fzf less yt-dlp mpv chafa
 ```
 </details>
 
@@ -41,7 +53,7 @@ apt install curl jq fzf less
 <summary>Fedora</summary>
 
 ```sh
-dnf install curl jq fzf less
+dnf install curl jq fzf less yt-dlp mpv chafa
 ```
 </details>
 
@@ -49,55 +61,70 @@ dnf install curl jq fzf less
 <summary>macOS (Homebrew)</summary>
 
 ```sh
-brew install curl jq fzf
+brew install curl jq fzf yt-dlp mpv chafa
 ```
 </details>
 
-
 ## Installation
+
+To install all scripts in the `scripts/` directory to your system:
 
 ```sh
 git clone https://github.com/0xcr3at0rx/Wiki
 cd Wiki
-doas/sudo cp wiki /usr/local/bin/wiki
+sudo ./install.sh # or doas ./install.sh
 ```
 
-<details>
-<summary>
-Using Nix
-</summary>
-
-Run without installing:
+By default, scripts are installed to `/usr/local/bin`. You can customize the target directory by setting the `PREFIX` environment variable:
 
 ```sh
-nix run github:0xcr3at0rx/Wiki -- <search query>
-# or
-nix shell github:0xcr3at0rx/Wiki
-wiki <search query>
+PREFIX=~/.local/bin ./install.sh
 ```
 
-Install:
+### Using Nix
+
+<details>
+<summary>Nix Instructions</summary>
+
+Run a script without installing it permanently:
+
+```sh
+nix run github:0xcr3at0rx/Wiki -- <script_name> <arguments>
+```
+
+Enter a shell with the scripts available:
+
+```sh
+nix shell github:0xcr3at0rx/Wiki
+<script_name> <arguments>
+```
+
+Install to your current profile:
+
 ```sh
 nix profile add github:0xcr3at0rx/Wiki
 ```
 
-Or add to your NixOS/Home-Manager configuration:
+Add to your NixOS or Home-Manager configuration:
 
 ```nix
-inputs.wiki.url = "github:0xcr3at0rx/Wiki";
-# then include this in your packages
-inputs.wiki.packages.${system}.wiki
+inputs.scripts.url = "github:0xcr3at0rx/Wiki";
+
+# Then include this in your packages
+inputs.scripts.packages.${system}.default
 ```
 </details>
 
-
 ## Usage
 
+Once installed, you can run any of the provided scripts directly from your terminal. 
+
 ```sh
-wiki <search query>
+<script_name> [options] <arguments>
 ```
+
+*(Note: Refer to individual scripts for specific usage instructions.)*
+
 ## License
 
-GPL-v3
-
-
+This project is licensed under the [GPL-v3](LICENSE) License.
